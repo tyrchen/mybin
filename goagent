@@ -1,0 +1,2 @@
+cd ~/software/goagent/local
+./proxy.py
