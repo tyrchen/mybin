@@ -1,0 +1,3 @@
+#!/bin/bash
+
+curl http://jcnrd.us:6800/schedule.json -d project=jd -d spider=directory
