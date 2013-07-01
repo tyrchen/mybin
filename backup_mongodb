@@ -1,5 +1,14 @@
 #!/bin/bash
 
+E_BADARGS=65
+EXPECTED_ARGS=1
+
+if [ $# -ne $EXPECTED_ARGS ]
+then
+	echo "Usage: $0 dbname"
+	exit $E_BADARGS
+fi
+
 BackupDirBase=/var/backup/mongodb/$1
 ArchiveDir="$BackupDirBase/archive"
 LogFile="$BackupDirBase/dump.log"
@@ -30,5 +39,3 @@ esac
 echo -e "\n### $(date) ###" >> "$LogFile"
 
 :
-
-

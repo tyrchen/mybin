@@ -1,8 +1,8 @@
 #!/bin/bash
  
- EXPECTED_ARGS=2
- E_BADARGS=65
- MYSQL=`which mysql`
+EXPECTED_ARGS=2
+E_BADARGS=65
+MYSQL=`which mysql`
   
 Q1="create database if not exists $1;"
 Q2="grant usage on *.* to $1@localhost identified by '$2';"
