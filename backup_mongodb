@@ -3,7 +3,7 @@
 E_BADARGS=65
 EXPECTED_ARGS=1
 
-if [ $# -ne $EXPECTED_ARGS ]
+if [ $# -lt $EXPECTED_ARGS ]
 then
 	echo "Usage: $0 dbname"
 	exit $E_BADARGS
@@ -22,7 +22,7 @@ mkdir -p "$BackupDir"
 mongodump --db "$Database" --out "$BackupDir" >> "$LogFile" 2>&1
 ln -sf -T "$BackupDir" "$BackupDirBase/dump_latest"
 
-case $1 in
+case $2 in
 	rotate)
 		## bi-monthly archive
 		Archive="$ArchiveDir/$(date +%Y%m%d).7z"
