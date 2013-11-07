@@ -1,0 +1,10 @@
+#!/bin/bash
+EXPECTED_ARGS=2
+
+if [ $# -lt $EXPECTED_ARGS ]
+then
+	echo "Usage: $0 old_ext new_ext"
+	exit $E_BADARGS
+fi
+
+for file in *.$1 ; do mv $file `echo $file | sed 's/\(.*\.\)$1/\1$2/'` ; done

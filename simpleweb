@@ -1,1 +1,1 @@
-python -m SimpleHTTPServer 8210
+python -m SimpleHTTPServer $1

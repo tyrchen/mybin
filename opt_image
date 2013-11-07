@@ -1,0 +1,3 @@
+#!/bin/bash
+
+sips --setProperty formatOptions normal -Z 1200 $1
