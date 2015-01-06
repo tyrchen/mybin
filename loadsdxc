@@ -1,0 +1,2 @@
+#!/bin/sh
+sudo kextunload -b com.apple.driver.AppleSDXC; sudo kextload -b com.apple.driver.AppleSDXC

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for f in *.m4a; do ffmpeg -i "$f" "${f%m4a}wav"; done
+sox *.wav combined.wav
+ffmpeg -i combined.wav -acodec mp3 combined.mp3
+rm *.wav

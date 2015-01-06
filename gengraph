@@ -1,0 +1,248 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Usage:
+    cscope_draw.py [--db=<cscope.out file name>] [--depth=<max depth>] <function_name>
+
+Options:
+    -h, --help
+"""
+from __future__ import unicode_literals
+from docopt import docopt
+
+import re
+import os
+import mmap
+import logging
+import pygraphviz as viz
+
+
+__author__ = 'tchen'
+logger = logging.getLogger(__name__)
+
+fname_regex = re.compile(r'\t\$([^\n]+)')
+fcall_regex = re.compile(r'\t`([^\n]+)')
+fend_regex = re.compile(r'\t\}')
+
+IGNORED_FUNC = [
+    'atomic',
+    'strlen',
+    'str',
+    'fput',
+    'fget',
+    'abort',
+    'barrier',
+    'print',
+    'va_',
+    'clock_',
+    'error',
+    'define',
+    'soc',
+    'bcm_',
+    'ezchip',
+    'assert',
+    'bzero',
+    'sync',
+    'free',
+    'alloc',
+    'hton',
+    'ntoh',
+]
+
+# enough colors for rendering the graph
+COLORS = [
+    # http://www.colourlovers.com/palette/694737/Thought_Provoking
+    '#ecd078',
+    '#d95b43',
+    '#c02942',
+    '#542437',
+    '#53777a',
+    # http://www.colourlovers.com/palette/580974/Adrift_in_Dreams
+    '#cff09e',
+    '#a8dba8',
+    '#79bd9a',
+    '#3b8686',
+    '#0b486b',
+    # http://www.colourlovers.com/palette/629637/(%E2%97%95%E3%80%9D%E2%97%95)
+    '#fe4365',
+    '#fc9d9a',
+    '#f9cdad',
+    '#c8c8a9',
+    '#83af9b',
+    # http://www.colourlovers.com/palette/49963/let_them_eat_cake
+    '#774F38',
+    '#E08E79',
+    '#F1D4AF',
+    '#ECE5CE',
+    '#C5E0DC',
+]
+
+
+def parse_cscope_db(cscope_file):
+    start = 0
+    fname = ''
+    fcalls = set([])
+
+    with open(cscope_file, 'r') as f:
+        line = f.readline()
+        while line:
+            if not start:
+                m = fname_regex.match(line)
+                if m:
+                    start = 1
+                    fname = m.groups()[0]
+            else:
+                if fend_regex.match(line):
+                    start = 0
+                    yield unicode(fname), map(lambda x: unicode(x), fcalls)
+                else:
+                    m = fcall_regex.match(line)
+                    if m:
+                        fcalls.add(m.groups()[0])
+            line = f.readline()
+
+
+def test_parser(cscope_file):
+    parser = parse_cscope_db(cscope_file)
+
+    for fname, fcalls in parser:
+        print fname
+
+
+# not optimized for performance
+class Cscope(object):
+    def __init__(self, cscope_file):
+        # this should work for really big file, say 30G
+        # the assumption is that you need a 64-bit OS
+        f = open(cscope_file, 'r')
+        self.file_size = os.stat(cscope_file).st_size
+        self.data = mmap.mmap(f.fileno(), self.file_size, access=mmap.ACCESS_READ)
+        self.colors = {}
+
+    def find_callee(self, fname):
+        start_pattern = '\t$%s\n' % fname
+        end_pattern = '\t}'
+        start = self.data.find(start_pattern)
+        if start < 0:
+            return None
+
+        start += len(start_pattern)
+        end = self.data.find(end_pattern, start)
+
+        if end < 0:
+            raise IndexError
+
+        data = self.data[start:end]
+        fcallees = set()
+
+        for line in data.split('\n'):
+            m = fcall_regex.match(line)
+            if m:
+                fcallees.add(m.groups()[0])
+
+        return fcallees
+
+    def find_caller(self, fname):
+        pattern = '\t`%s' % fname
+        length = len(pattern)
+
+        start = self.data.find(pattern)
+
+        fcallers = set()
+
+        while start >= 0:
+            index = self.data.rfind('\t$', 0, start)
+
+            if index >= 0:
+                fcallers.add(self.data[index + 2: self.data.find('\n', index)])
+
+            start = self.data.find(pattern, start + length)
+
+        return fcallers
+
+    def find_filename_by_function(self, name):
+        function_pattern = '\t$%s\n' % name
+
+        start = self.data.find(function_pattern)
+        index = self.data.rfind('\t@', 0, start)
+        if index >= 0:
+            return self.data[index + 2: self.data.find('\n', index)]
+
+        return ''
+
+    def __get_color(self, filename):
+        # colors are poped from COLORS
+        base_dir = filename.split('/')[0]
+        if base_dir not in self.colors:
+            if COLORS:
+                self.colors[base_dir] = COLORS.pop()
+            else:
+                self.colors[base_dir] = ''
+
+        return self.colors[base_dir]
+
+    def find_structure(self, name):
+        pass
+
+    def draw_single_graph(self, name, max_depth, is_callee=True, with_color=True):
+        functions = {}
+        f = self.find_callee if is_callee else self.find_caller
+
+        def g(top, items, depth):
+            need_walk = True
+            if items and (max_depth == 0 or depth <= max_depth):
+
+                for item in list(set(items)):
+                    if not item.startswith('_') and item not in functions:
+                        item_lower = item.lower()
+                        for func in IGNORED_FUNC:
+                            if func in item_lower:
+                                need_walk = False
+                                break
+                        if need_walk:
+                            functions[item] = 1
+                            graph.add_edge(top, item)
+                            if with_color:
+                                node = graph.get_node(item)
+                                node.attr['color'] = self.__get_color(self.find_filename_by_function(item))
+                                node.attr['style'] = 'filled'
+                            g(item, f(item), depth + 1)
+
+        graph = viz.AGraph(directed=True,rankdir='LR')
+        #graph.node_attr['shape'] = 'rectangle'
+        g(name, f(name), 1)
+
+        if not is_callee:
+            graph = graph.reverse()
+
+        extra = "callee" if is_callee else "caller"
+        graph.write("%s_%s.dot" % (name, extra))
+        graph.layout(prog="dot")
+
+        filename = "%s_%s.png" % (name, extra)
+        graph.draw(filename)
+        os.unlink("%s_%s.dot" % (name, extra))
+        print("%s generated." % filename)
+
+
+
+def run(arguments):
+    db_file = arguments['--db']
+    max_depth = arguments['--depth']
+    function_name = arguments['<function_name>']
+
+    if not db_file:
+        db_file = 'cscope.out'
+
+    if not max_depth:
+        max_depth = 9
+
+    parser = Cscope(db_file)
+    #parser.draw_single_graph(function_name, int(max_depth))
+    parser.draw_single_graph(function_name, int(max_depth), False)
+
+
+arguments = docopt(__doc__)
+
+run(arguments)
